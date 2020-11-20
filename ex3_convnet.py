@@ -38,7 +38,8 @@ learning_rate_decay = 0.95
 reg = 0.001
 num_training = 49000
 num_validation = 1000
-norm_layer = None  # norm_layer = 'BN'
+# norm_layer = None
+norm_layer = 'BN'
 print(hidden_size)
 
 # -------------------------------------------------
@@ -111,20 +112,26 @@ class ConvNet(nn.Module):
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
         # composes the convolution blocks
-        for i_block, layer_size in enumerate(hidden_layers):
-            conv_block = nn.Sequential(
-                nn.Conv2d(in_channels=input_size if i_block == 0 else hidden_size[i_block - 1], out_channels=layer_size,
+        for i_block, out_channels in enumerate(hidden_layers):
+            in_channels = input_size if i_block == 0 else hidden_size[i_block - 1]
+            conv_layers = [
+                nn.Conv2d(in_channels=in_channels, out_channels=out_channels,
                           kernel_size=(3, 3), stride=1, padding=1),
                 nn.MaxPool2d(2),
                 nn.ReLU()
-            )
+            ]
+            # eventually adds a normalization layer into the convolution block
+            if norm_layer:
+                conv_layers.insert(1, nn.BatchNorm2d(out_channels))
+            conv_block = nn.Sequential(*conv_layers)
             layers += [conv_block]
 
         # adds the classification block
-        classification_block = nn.Sequential(
+        classification_layers = [
             nn.Flatten(),
             nn.Linear(hidden_size[-1], num_classes)
-        )
+        ]
+        classification_block = nn.Sequential(*classification_layers)
         layers += [classification_block]
 
         # packs all the convolutional blocks and the classification block into a single sequential container
@@ -305,6 +312,16 @@ for epoch in range(num_epochs):
 
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
+        # checks if we have found a better model
+        if epoch == 0 or accuracy > np.max(accuracy_val):
+            best_model = model
+            # saves the model checkpoint
+            torch.save(best_model.state_dict(), 'model.ckpt')
+            if epoch > 0:
+                print(
+                    f"\tfound a new better model, with a validation accuracy of {accuracy}% "
+                    f"({accuracy - np.max(accuracy_val)}% better)")
+
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
 # Test the model
@@ -328,6 +345,8 @@ plt.show()
 #################################################################################
 # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
+# loads the weights from the file
+best_model = torch.load('model.ckpt')
 
 # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
