@@ -3,79 +3,84 @@ import torch.nn as nn
 import torchvision
 from torchvision import models
 import torchvision.transforms as transforms
+import numpy as np
 
 import matplotlib.pyplot as plt
+
 
 def weights_init(m):
     if type(m) == nn.Linear:
         m.weight.data.normal_(0.0, 1e-3)
         m.bias.data.fill_(0.)
 
+
 def update_lr(optimizer, lr):
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
-#--------------------------------
-# Device configuration
-#--------------------------------
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-print('Using device: %s'%device)
 
-#--------------------------------
+# --------------------------------
+# Device configuration
+# --------------------------------
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print('Using device: %s' % device)
+
+# --------------------------------
 # Hyper-parameters
-#--------------------------------
+# --------------------------------
 input_size = 32 * 32 * 3
-layer_config= [512, 256]
+layer_config = [512, 256]
 num_classes = 10
-num_epochs = 30
+num_epochs = 2
 batch_size = 200
 learning_rate = 1e-3
 learning_rate_decay = 0.99
-reg=0#0.001
-num_training= 49000
-num_validation =1000
+reg = 0  # 0.001
+num_training = 49000
+num_validation = 1000
 fine_tune = True
-pretrained=True
+pretrained = True
 
-#-------------------------------------------------
+# -------------------------------------------------
 # Load the CIFAR-10 dataset
-#-------------------------------------------------
-data_aug_transforms = [transforms.RandomHorizontalFlip(p=0.5)]#, transforms.RandomGrayscale(p=0.05)]
+# -------------------------------------------------
+data_aug_transforms = [transforms.RandomHorizontalFlip(p=0.5)]  # , transforms.RandomGrayscale(p=0.05)]
 ###############################################################################
 # TODO: Add to data_aug_transforms the best performing data augmentation      #
 # strategy and hyper-parameters as found out in Q3.a                          #
 ###############################################################################
 
-norm_transform = transforms.Compose(data_aug_transforms+[transforms.ToTensor(),
-                                     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
-                                     ]) #Need to preserve the normalization values of the pre-trained model
+norm_transform = transforms.Compose(data_aug_transforms + [transforms.ToTensor(),
+                                                           transforms.Normalize([0.485, 0.456, 0.406],
+                                                                                [0.229, 0.224, 0.225]),
+                                                           ])  # Need to preserve the normalization values of the pre-trained model
 cifar_dataset = torchvision.datasets.CIFAR10(root='datasets/',
-                                           train=True,
-                                           transform=norm_transform,
-                                           download=True)
+                                             train=True,
+                                             transform=norm_transform,
+                                             download=True)
 
 test_dataset = torchvision.datasets.CIFAR10(root='datasets/',
-                                          train=False,
-                                          transform=norm_transform
-                                          )
-#-------------------------------------------------
+                                            train=False,
+                                            transform=norm_transform
+                                            )
+# -------------------------------------------------
 # Prepare the training and validation splits
-#-------------------------------------------------
+# -------------------------------------------------
 mask = list(range(num_training))
 train_dataset = torch.utils.data.Subset(cifar_dataset, mask)
 mask = list(range(num_training, num_training + num_validation))
 val_dataset = torch.utils.data.Subset(cifar_dataset, mask)
 
-#-------------------------------------------------
+# -------------------------------------------------
 # Data loader
-#-------------------------------------------------
+# -------------------------------------------------
 train_loader = torch.utils.data.DataLoader(dataset=train_dataset,
                                            batch_size=batch_size,
                                            shuffle=True)
 
 val_loader = torch.utils.data.DataLoader(dataset=val_dataset,
-                                           batch_size=batch_size,
-                                           shuffle=False)
+                                         batch_size=batch_size,
+                                         shuffle=False)
 
 test_loader = torch.utils.data.DataLoader(dataset=test_dataset,
                                           batch_size=batch_size,
@@ -86,6 +91,7 @@ def set_parameter_requires_grad(model, feature_extracting):
     if feature_extracting:
         for param in model.parameters():
             param.requires_grad = False
+
 
 class VggModel(nn.Module):
     def __init__(self, n_class, fine_tune, pretrained=True):
@@ -99,7 +105,25 @@ class VggModel(nn.Module):
         #################################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        
+        # feature extraction block
+        vgg11_bn = torchvision.models.vgg11_bn(pretrained=True)
+        features_extraction_block = vgg11_bn.features
+        for parameter in features_extraction_block.parameters():
+            parameter.requires_grad = False
+
+        # classification block
+        classification_layers = [
+            nn.BatchNorm2d(512),
+            nn.Flatten(),
+            nn.Linear(512, 150),
+            nn.ReLU(),
+            nn.Linear(150, n_class)
+        ]
+        classification_block = nn.Sequential(*classification_layers)
+        self.layers = nn.Sequential(
+            features_extraction_block,
+            classification_block
+        )
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
@@ -108,16 +132,15 @@ class VggModel(nn.Module):
         # TODO: Implement the forward pass computations                                 #
         #################################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-        
-
+        out = self.layers(x)
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         return out
 
-# Initialize the model for this run
-model= VggModel(num_classes, fine_tune, pretrained)
 
-if (pretrained==False):
+# Initialize the model for this run
+model = VggModel(num_classes, fine_tune, pretrained)
+
+if (pretrained == False):
     model.apply(weights_init)
 
 # Print the model we just instantiated
@@ -131,16 +154,19 @@ print("Params to learn:")
 if fine_tune:
     params_to_update = []
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-    
-    
-    
+
+    # trains only the parameters not of the vgg11
+    # params_to_update += [parameter for parameter in model.layers[1].parameters()]
+
+    # trains every parameter
+    params_to_update += [parameter for parameter in model.layers.parameters()]
+
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 else:
     params_to_update = model.parameters()
-    for name,param in model.named_parameters():
+    for name, param in model.named_parameters():
         if param.requires_grad == True:
-            print("\t",name)
-
+            print("\t", name)
 
 model.to(device)
 
@@ -155,7 +181,7 @@ loss_train = []
 loss_val = []
 best_accuracy = None
 accuracy_val = []
-best_model = type(model)(num_classes, fine_tune, pretrained) # get a new instance
+best_model = type(model)(num_classes, fine_tune, pretrained)  # get a new instance
 for epoch in range(num_epochs):
 
     model.train()
@@ -177,18 +203,16 @@ for epoch in range(num_epochs):
 
         loss_iter += loss.item()
 
-        if (i+1) % 100 == 0:
-            print ('Epoch [{}/{}], Step [{}/{}], Loss: {:.4f}'
-                   .format(epoch+1, num_epochs, i+1, total_step, loss.item()))
+        if (i + 1) % 100 == 0:
+            print('Epoch [{}/{}], Step [{}/{}], Loss: {:.4f}'
+                  .format(epoch + 1, num_epochs, i + 1, total_step, loss.item()))
 
-    loss_train.append(loss_iter/(len(train_loader)*batch_size))
-
+    loss_train.append(loss_iter / (len(train_loader) * batch_size))
 
     # Code to update the lr
     lr *= learning_rate_decay
     update_lr(optimizer, lr)
-    
-    
+
     model.eval()
     with torch.no_grad():
         correct = 0
@@ -203,15 +227,15 @@ for epoch in range(num_epochs):
 
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
-            
+
             loss = criterion(outputs, labels)
             loss_iter += loss.item()
-            
-        loss_val.append(loss_iter/(len(val_loader)*batch_size))
+
+        loss_val.append(loss_iter / (len(val_loader) * batch_size))
 
         accuracy = 100 * correct / total
         accuracy_val.append(accuracy)
-        
+
         print('Validataion accuracy is: {} %'.format(accuracy))
         #################################################################################
         # TODO: Q2.b Use the early stopping mechanism from previous questions to save   #
@@ -220,16 +244,20 @@ for epoch in range(num_epochs):
 
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-
+        # checks if we have found a better model
+        if epoch == 0 or accuracy >= np.max(accuracy_val):
+            best_model = model
+            # saves the model checkpoint
+            torch.save(best_model.state_dict(), 'pretrained_model.ckpt')
+            if epoch > 0:
+                print(
+                    f"\tfound a new better model, with a validation accuracy of {accuracy}%")
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-    
 
 # Test the model
 # In test phase, we don't need to compute gradients (for memory efficiency)
 model.eval()
-
 
 plt.figure(2)
 plt.plot(loss_train, 'r', label='Train loss')
@@ -242,15 +270,14 @@ plt.plot(accuracy_val, 'r', label='Val accuracy')
 plt.legend()
 plt.show()
 
-
-
 #################################################################################
 # TODO: Use the early stopping mechanism from previous question to load the     #
 # weights from the best model so far and perform testing with this model.       #
 #################################################################################
 # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-
+# loads the weights from the file
+best_model = torch.load('pretrained_model.ckpt')
 
 # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
@@ -271,9 +298,5 @@ with torch.no_grad():
 
     print('Accuracy of the network on the {} test images: {} %'.format(total, 100 * correct / total))
 
-
-
 # Save the model checkpoint
-#torch.save(model.state_dict(), 'model.ckpt')
-
-
+# torch.save(model.state_dict(), 'model.ckpt')

@@ -52,6 +52,16 @@ print(hidden_size)
 data_aug_transforms = []
 # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
+data_aug_transforms += [
+    # geometric transformations
+    transforms.RandomHorizontalFlip(p=0.25),
+    # transforms.RandomVerticalFlip(p=0.05),
+    transforms.RandomPerspective(distortion_scale=0.05, p=0.1),
+    transforms.RandomRotation(degrees=45),
+    # color transformations
+    transforms.ColorJitter(brightness=0.1, contrast=0.05, saturation=0.05),
+    # transforms.RandomGrayscale(p=0.1)
+]
 
 # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 norm_transform = transforms.Compose(data_aug_transforms + [transforms.ToTensor(),
@@ -118,7 +128,8 @@ class ConvNet(nn.Module):
                 nn.Conv2d(in_channels=in_channels, out_channels=out_channels,
                           kernel_size=(3, 3), stride=1, padding=1),
                 nn.MaxPool2d(2),
-                nn.ReLU()
+                nn.ReLU(),
+                nn.Dropout2d(p=0.3)
             ]
             # eventually adds a normalization layer into the convolution block
             if norm_layer:
@@ -313,14 +324,13 @@ for epoch in range(num_epochs):
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
         # checks if we have found a better model
-        if epoch == 0 or accuracy > np.max(accuracy_val):
+        if epoch == 0 or accuracy >= np.max(accuracy_val):
             best_model = model
             # saves the model checkpoint
             torch.save(best_model.state_dict(), 'model.ckpt')
             if epoch > 0:
                 print(
-                    f"\tfound a new better model, with a validation accuracy of {accuracy}% "
-                    f"({accuracy - np.max(accuracy_val)}% better)")
+                    f"\tfound a new better model, with a validation accuracy of {accuracy}%")
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
